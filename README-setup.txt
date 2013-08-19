@@ -8,7 +8,7 @@ Directory structure:
                computer so that the user can interact with the server.
 
                The client and server processes may be run from the same computer
-               to save bandwidth and increase performance.
+               to save bandwidth/increase performance.
 
 ``db''     --- This directory conatins SQL scripts for the database, which is
                cannonically a MySQL database named ``NetworkDB'' and (during
