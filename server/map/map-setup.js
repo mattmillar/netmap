@@ -4,7 +4,7 @@ function setupMap () { // {{{
 	// initialize map
 	var map = new OpenLayers.Map('map');
 	var base = new OpenLayers.Layer.WMS("OpenLayers WMS", "http://vmap0.tiles.osgeo.org/wms/vmap0", {layers: 'basic'});
-	map.addLayer(base);
+	map.addLayers([base]);
 	
 	// setup clustering for the map
 	setupClustering(map);
@@ -40,9 +40,11 @@ function setupClustering (map) { // {{{
 	var clusterStrategy = new OpenLayers.Strategy.Cluster();
 	clusterStrategy.distance = 10;
 
+	//var refreshStrategy = new OpenLayers.Strategy.Refresh();
+
 	var clusters = new OpenLayers.Layer.Vector("clusters",
 		{
-			strategies: [clusterStrategy],
+			strategies: [clusterStrategy /*, refreshStrategy */],
 			styleMap: new OpenLayers.StyleMap(
 				{
 					"default": style,
@@ -55,7 +57,7 @@ function setupClustering (map) { // {{{
 		}
 	);
 
-	map.addLayer(clusters);
+	map.addLayers([clusters]);
 
 	var select = new OpenLayers.Control.SelectFeature(
 		clusters, {hover: true}
@@ -63,119 +65,18 @@ function setupClustering (map) { // {{{
 
 	map.addControl(select);
 	select.activate();
-    
 
 } // }}}
 function setHosts (map, hosts) { // {{{
 	var features = [];
 	for (var host_idx = 0; host_idx < hosts.length; host_idx++) {
-		features.push(
-			new OpenLayers.Feature.Vector(
-				new OpenLayers.Geometry.Point(hosts[host_idx].lon, hosts[host_idx].lat),
-				{hostid: hosts[host_idx].hostid}
-			)
-		);
+		features.push(new OpenLayers.Feature.Vector(new OpenLayers.Geometry.Point(hosts[host_idx].lon, hosts[host_idx].lat)));
 	}
-
-	//POPUP
-	var style_popup = new OpenLayers.Style(
-		{
-			pointRadius: "${radius}",
-			fillColor: "#ffcc66",
-			fillOpacity: 0,
-			strokeColor: "#cc6633",
-			strokeWidth: "${width}",
-			strokeOpacity: 0
-		},
-		{
-			context: {
-				width: function(feature) {
-					return (feature.cluster) ? 2 : 1;
-				},
-				radius: function(feature) {
-					var pix = 3;
-					if(feature.cluster) {
-						pix = Math.min(feature.attributes.count, 7) + 2;
-					}
-					return pix;
-				}
-			}
-		}
-	);
-
-	var clusterStrategy = new OpenLayers.Strategy.Cluster();
-	clusterStrategy.distance = 10;
-    // cluster for popups
-    
-	var vector = new OpenLayers.Layer.Vector(
-		'Points',
-		{
-			strategies: [clusterStrategy],
-			styleMap: new OpenLayers.StyleMap(
-				{
-					"default": style_popup,
-					"select": {
-						fillColor: "#8aeeef",
-						fillOpacity: 0,
-						strokeOpacity: 0,
-						strokeColor: "#32a8a9"
-					}
-				}
-			),
-			eventListeners: {
-				'featureselected': function(evt) {
-					var ftr = evt.feature;
-					//var hostid = ftr.data.hostid;
-
-					var popup = new OpenLayers.Popup.FramedCloud(
-						"popup" + ftr.data.hostid, // popup id string
-						OpenLayers.LonLat.fromString(ftr.geometry.toShortString()), // lonlat
-						null, // contentSize
-						"<div style=\"font-size: 1em; color: #536895;\">Loading...</div>", // contentHTML
-						null, // content anchor
-						true // closeBox (whether to enable close box)
-					);
-					ftr.popup = popup;
-
-					queryServer({
-						query: "host-info",
-						hostid: ftr.data.hostid
-					}, function (serverResponse) {
-						popup.setContentHTML("<p style=\"font-size: 1.5em; color: #536895;\">" + serverResponse.shortname + "</p><p style=\"font-size: 0.8em; color: #000000;\">" + serverResponse.fullname + "</p><p style=\"font-size: 0.7em; color: #101010;\">" + serverResponse.description + "</p>");
-					});
-
-					map.addPopup(popup);
-				},
-				'featureunselected':function(evt){
-					var ftr = evt.features;
-					map.removePopup(ftr.popup);
-					ftr.popup.destroy();
-					ftr.popup = null;
-				}
-			}
-		}
-	);
-
-	
-	var selector = new OpenLayers.Control.SelectFeature(
-		vector,
-		{
-			click:true,
-			autoActivate:true
-		}
-	); 
-    vector.addFeatures(features);
-    map.addLayer(vector);
-	//map.addLayer([vector]);
-	map.addControl(selector);
-	// END POPUP
-
 
 	var clusters = map.getLayersByName("clusters")[0];
 	clusters.features = [];
 	clusters.addFeatures(features);
 	clusters.refresh();
-
 } // }}}
 function setLinks (map, links) { // {{{
 	// FIXME I don't think this function is actually deleting any old links before adding in new ones
@@ -184,17 +85,9 @@ function setLinks (map, links) { // {{{
 
 		var pointLayer = new OpenLayers.Layer.Vector('Original');
 		var pointLayerFeatures = [];
-		pointLayerFeatures.push(
-			new OpenLayers.Feature.Vector(
-				new OpenLayers.Geometry.Point(links[link_idx].lonA, links[link_idx].latA)
-			)
-		);
-		pointLayerFeatures.push(
-			new OpenLayers.Feature.Vector(
-				new OpenLayers.Geometry.Point(links[link_idx].lonB, links[link_idx].latB)
-			)
-		);
-
+		for (var linkiface_idx = 0; linkiface_idx < links[link_idx].length; linkiface_idx++) {
+			pointLayerFeatures.push(new OpenLayers.Feature.Vector(new OpenLayers.Geometry.Point(links[link_idx][linkiface_idx].lon, links[link_idx][linkiface_idx].lat)));
+		}
 		pointLayer.addFeatures(pointLayerFeatures);
 
 		theLink.addNodes(pointLayer.features);
@@ -217,84 +110,13 @@ function setBounds (map) { // {{{
 	bounds2.extend(new OpenLayers.LonLat(-110, 32.8));
 } // }}}
 
-// this function takes a "month index" (which will be the number that increments)
-// per the user interface) and computes the returns the corresponding "datetime"
-// string (i.e., formatted per our "YYYY-MM-DD-HH-MM-SS" convention for datetimes)
-//
-// "month indexes" start with 0 as Jan 1969, then 1 would be Feb 1969, 12 would
-// be Jan 1970, etc.
-function monthNum2DatetimeStr (monthNum) { // {{{
-	var year = 1969 + Math.floor(monthNum / 12);
-	var month = (monthNum % 12) + 1;
-	var monthFormatted = "";
-
-	if (month < 10) {
-		monthFormatted += "0";
-	}
-	monthFormatted += month;
-
-	return year + "-" + monthFormatted + "-01-00-00-00";
-} // }}}
-
-var currentMonthNum = 0;
-var animationRunning = false;
-var animationWindowLoopId = -1;
-
-var updateMap; // this will be the "update map" function
-
-function toggleAnimation () {
-	if (animationRunning) {
-		document.getElementById("animation-toggle").value = "Go";
-		window.clearInterval(animationWindowLoopId);
-		animationRunning = false;
-	} else {
-		document.getElementById("animation-toggle").value = "Stop";
-		animationWindowLoopId = window.setInterval(function() {
-			if (currentMonthNum >= 200) {
-				currentMonthNum = 0;
-			} else {
-				currentMonthNum++;
-			}
-
-			var dateStr = monthNum2DatetimeStr(currentMonthNum);
-			document.getElementById("current-date").innerHTML = dateStr;
-			updateMap(dateStr);
-		}, 500);
-		animationRunning = true;
-	}
-}
-
 function init() {
 	var map = setupMap();
+	setMapData(map, hosts, links);
 	
-	updateMap = function (dateStr) {
-		queryServer({"query": "hosts", "datetime": dateStr}, function (hosts) {
-			setHosts(map, hosts);
-		});
-
-		queryServer({"query": "links", "datetime": dateStr}, function (links) {
-			setLinks(map, links);
-		});
-	}
-
+	hosts.push({lat: 35, lon: -120});
+	links.push([{lat: 35, lon: -120}, {lat: 34, lon: -121}]);
+	window.setTimeout(function() { setMapData(map, hosts, links); }, 4000);
 
 	setBounds(map);
 }
-
-//POPUP
-function onFeatureSelect(feature) {
-            selectedFeature = feature;
-            popup = new OpenLayers.Popup.FramedCloud("chicken", 
-                feature.geometry.getBounds().getCenterLonLat(),
-                null,
-                "<div style='font-size:.8em'>Feature: "
-                +"<br>Area: " + "</div>",
-                                     null, true, onPopupClose);
-            feature.popup = popup;
-            map.addPopup(popup);
-        }
-function onFeatureUnselect(feature) {
-            map.removePopup(feature.popup);
-            feature.popup.destroy();
-            feature.popup = null;
-} 
